@@ -1,0 +1,137 @@
+=== JVM参数
+
+Heap：
+
+PSYoungGen：
+
+- PS Eden Space：
+
+- 新的对象会先生成在Young area，也就是PSYoungGen中。
+- 新生代总大小为eden+from+to,与-Xmn相对应。例如：有个服务获取数据包，但是数据比较大，且需要并发读取，这时候新增对象会多。如果新生对象多到，新生代内存空间不够，则会转移到老生代。
+- from space：
+- to space:
+
+PS Survivor Space：救助空间。
+
+- 增大救助空间就是调整-XX:SurvivorRatio参数，这个参数是Eden区和Survivor区的大小比值，默认是32，也就是说Eden区是 Survivor区的32倍大小，要注意Survivo是有两个区的，因此Surivivor其实占整个young genertation的1/34。调小这个参数将增大survivor区，让对象尽量在survitor区呆长一点，减少进入年老代的对象。
+
+- 运行过程中survivor空间占比会自动根据应用运行调整，如果关闭了自适应调整策略（-XX:-UseAdaptiveSizePolicy），则XX:SurvivorRatio参数会成为survivor空间占比。计算survivor空间大小，依赖young的空间大小，计算公式S=Y/(R+2).
+- -XX:SurvivorRatio=ratio ,eden区和survivor区的比例。默认是8。
+
+- -XX:NewSize=size 
+设置初始的年轻代的大小。年轻代是分配新对象的地方，是 GC经常发生的地方。设置太低，会频繁minor GC，设置太高的话就只会发生Full GC了。Oracle推荐设置为整体内存的一半或者1/4。该参数等价于-Xmn。
+
+PS Old Gen： Metaspace( 8.0+，PermGen的替代者)：
+
+-默认情况下，类元数据只受可用的本地内存限制（容量取决于是32位或是64位操作系统的可用虚拟内存大小）。
+
+-新参数（MaxMetaspaceSize）用于限制本地内存分配给类元数据的大小。如果没有指定这个参数，元空间会在运行时根据需要动态调整。
+
+
+
+
+
+GC过程中都会占停正在运行的进程
+
+
+.GC（HotSpot）种类
+[width="100%",options="header,footer"]
+|====================
+| 类别 | serial collector | parallel collector（throughput collector） | concurrent collector
+(concurrent low pause collector)
+| 描述 | 单线程收集器
+使用单线程去完成所有的gc工作，没有线程间的通信，这种方式会相对高效 | 并行收集器
+使用多线程的方式，利用多CUP来提高GC的效率
+主要以到达一定的吞吐量为目标 | 并发收集器
+使用多线程的方式,利用多CUP来提高GC的效率
+并发完成大部分工作，使得gc pause短 
+| 应用 | 单处理器机器且没有pause time的要求 | 适用于科学技术和后台处理
+有中规模/大规模数据集大小的应用且运行在多处理器上，关注吞吐量(throughput) | 适合中规模/大规模数据集大小的应用，应用服务器,电信领域
+关注response time，而不是throughput 
+| 用法 | Client模式下默认
+可使用
+可用-XX:+UseSerialGC强制使用
+优点:对server应用没什么优点
+缺点:慢,不能充分发挥硬件资源 | Server模式下默认
+
+--YGC:PS FGC:Parallel MSC
+
+可用-XX:+UseParallelGC或-XX:+UseParallelOldGC强制指定
+
+--ParallelGC代表FGC为Parallel MSC
+
+--ParallelOldGC代表FGC为Parallel Compacting
+
+优点:高效
+
+缺点:当heap变大后,造成的暂停时间会变得比较长 | 可用-XX:+UseConcMarkSweepGC强制指定
+优点:
+对old进行回收时,对应用造成的暂停时间非常端,适合对latency要求比较高的应用
+缺点:
+1.内存碎片和浮动垃圾
+2.old去的内存分配效率低
+3.回收的整个耗时比较长
+4.和应用争抢CPU 
+| 内存回收触发 | YGC
+eden空间不足
+FGC
+old空间不足
+perm空间不足
+显示调用System.gc() ,包括RMI等的定时触发
+YGC时的悲观策略
+dump live的内存信息时(jmap –dump:live) | YGC
+eden空间不足
+FGC
+old空间不足
+perm空间不足
+显示调用System.gc() ,包括RMI等的定时触发
+YGC时的悲观策略--YGC前&YGC后
+dump live的内存信息时(jmap –dump:live) | YGC
+eden空间不足
+CMS GC
+1.old Gen的使用率大的一定的比率 默认为92%
+2.配置了CMSClassUnloadingEnabled,且Perm Gen的使用达到一定的比率 默认为92%
+3.Hotspot自己根据估计决定是否要触法
+4.在配置了ExplictGCInvokesConcurrent的情况下显示调用了System.gc.
+Full GC(Serial MSC)
+promotion failed 或 concurrent Mode Failure时; 
+| 内存回收触发时发生了什么 | YGC
+清空eden+from中所有no ref的对象占用的内存
+将eden+from中的所有存活的对象copy到to中
+在这个过程中一些对象将晋升到old中:
+--to放不下的
+--存活次数超过tenuring threshold的
+重新计算Tenuring Threshold;
+单线程做以上动作
+全程暂停应用
+FGC
+如果配置了CollectGen0First,则先触发YGC
+清空heap中no ref的对象,permgen中已经被卸载的classloader中加载的class的信息
+单线程做以上动作
+全程暂停应用 | YGC
+同serial动作基本相同,不同点:
+1.多线程处理
+2.YGC的最后不仅重新计算Tenuring Threshold,还会重新调整Eden和From的大小
+FGC
+1.如配置了ScavengeBeforeFullGC(默认),则先触发YGC(??)
+2.MSC:清空heap中的no ref对象,permgen中已经被卸载的classloader中加载的class信息,并进行压缩
+3.Compacting:清空heap中部分no ref的对象,permgen中已经被卸载的classloader中加载的class信息,并进行部分压缩
+多线程做以上动作. | YGC
+同serial动作基本相同,不同点:
+1.多线程处理
+CMSGC:
+1.old gen到达比率时只清除old gen中no ref的对象所占用的空间
+2.perm gen到达比率时只清除已被清除的classloader加载的class信息
+FGC
+同serial 
+| 细节参数 | 	可用-XX:+UseSerialGC强制使用
+-XX:SurvivorRatio=x,控制eden/s0/s1的大小
+-XX:MaxTenuringThreshold,用于控制对象在新生代存活的最大次数
+-XX:PretenureSizeThreshold=x,控制超过多大的字节的对象就在old分配. | -XX:SurvivorRatio=x,控制eden/s0/s1的大小
+-XX:MaxTenuringThreshold,用于控制对象在新生代存活的最大次数
+-XX:UseAdaptiveSizePolicy 去掉YGC后动态调整eden from已经tenuringthreshold的动作
+
+-XX:ParallelGCThreads 设置并行的线程数 | -XX:CMSInitiatingOccupancyFraction 设置old gen使用到达多少比率时触发
+-XX:CMSInitiatingPermOccupancyFraction,设置Perm Gen使用到达多少比率时触发
+-XX:+UseCMSInitiatingOccupancyOnly禁止hostspot自行触发CMS GC 
+|====================
