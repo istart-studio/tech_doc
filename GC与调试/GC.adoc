@@ -1,19 +1,33 @@
 === 垃圾回收
 
 
-==== 对象是否存活算法
+==== 算法
 
 1. 计数器算法(Reference Counting)：微软的COM，python都在使用这种算法管理内存。
 - Java没有用，因为无法解决循环引用。
 - 给 对象 中 添加 一个 引用 计数器， 每当 有一个 地方 引用 它 时， 计数器 值 就 加 1； 当 引用 失效 时， 计数器 值 就 减 1； 任何 时刻 计数器 为 0 的 对象 就是 不可能 再被 使用 的。
 - 判定效率高，适用于大部分情况。
 
-2. 可达性分析算法 (Reachability Analysis）:基本 思路 就是 通过 一系列 的 称为" GC Roots" 的 对象 作为 起始 点， 从这 些 节点 开始 向下 搜索， 搜索 所 走过 的 路径 称为 引用 链（ Reference Chain）， 当 一个 对象 到 GC Roots 没有 任何 引用 链 相连（ 用 图论 的 话来 说， 就是 从 GC Roots 到这 个 对象 不 可达） 时， 则 证明 此 对象 是 不可 用的。
+2. 可达性分析算法 (Reachability Analysis）:通过 一系列 的 称为" GC Roots" 的 对象 作为 起始 点， 从这 些 节点 开始 向下 搜索， 搜索 所 走过 的 路径 称为 引用 链（ Reference Chain）， 当 一个 对象 到 GC Roots 没有 任何 引用 链 相连（ 用 图论 的 话来 说， 就是 从 GC Roots 到这 个 对象 不 可达） 时， 则 证明 此 对象 是 不可 用的。
 - 可作为 GC Roots 的 对象 包括 下面 几种：
     * 虚拟机栈（栈帧中引用的对象）
     * 方法区(Hotspot的永久代)中静态属性引用的对象
     * 方法区(Hotspot的永久代)中常量引用的对象
     * 本地方法栈中JNI（即一般说法的Native方法）引用的对象。
+
+==== 可达性 Reachability
+
+
+[quote,https://docs.oracle.com/javase/7/docs/api/java/lang/ref/package-summary.html#reachability]
+____
+Going from strongest to weakest, the different levels of reachability reflect the life cycle of an object. They are operationally defined as follows:
+
+- An object is strongly reachable if it can be reached by some thread without traversing any reference objects. A newly-created object is strongly reachable by the thread that created it.
+- An object is softly reachable if it is not strongly reachable but can be reached by traversing a soft reference.
+- An object is weakly reachable if it is neither strongly nor softly reachable but can be reached by traversing a weak reference. When the weak references to a weakly-reachable object are cleared, the object becomes eligible for finalization.
+- An object is phantom reachable if it is neither strongly, softly, nor weakly reachable, it has been finalized, and some phantom reference refers to it.
+Finally, an object is unreachable, and therefore eligible for reclamation, when it is not reachable in any of the above ways.
+____
 
 ==== 引用
 
@@ -41,25 +55,24 @@
 - 弱引用 WeakReference：
 
 * 非必需对象
+* 使用弱引用后，可以维持对 referent 的引用，而不会阻止它被垃圾收集.
 * 弱引用对象只能生存到下一次垃圾回收之前。当垃圾回收时，无论内存是否足够，都会回收掉只被弱引用关联的对象。
+* 只有弱引用的对象称为弱可及（weakly reachable）
+* 弱引用是对一个对象（称为 referent）的引用的持有者。使用弱引用后，可以维持对 referent 的引用，而不会阻止它被垃圾收集。当垃圾收集器跟踪堆的时候，如果对一个对象的引用只有弱引用，那么这个 referent 就会成为垃圾收集的候选对象，就像没有任何剩余的引用一样，而且所有剩余的弱引用都被清除。（只有弱引用的对象称为弱可及（weakly reachable）。）
 
-* 例如 我们在一个服务中需要cache，cache同步于整个服务的生命周期,随着cache中包含的引用越来越多，gc是无法回收这些引用的，只能自行手动移除引用。而这时若cache包含的引用对象希望交由gc自动处理，使用WeakReference<Object> weakObj = new WeakReference(Object)(obj);当一个对象仅仅被weak reference指向, __而没有任何其他strong reference指向的时候__, 如果GC运行, 那么这个对象就会被回收。
-
-[WARNING]
-如果 TestObject testObject = new TestObject(); 
-使用WeakReference<TestObject> weakObj = new WeakReference(TestObject)(testObject);while(true){
- System.out.println(weakObj);
-}；经过一段时间后，weakObj会被回收。
-
-
-* WeakReference不会强制对象保存在内存中。它拥有比较短暂的生命周期，允许你使用垃圾回收器的能力去权衡一个对象的可达性。在垃圾回收器扫描它所管辖的内存区域过程中，一旦gc发现对象是weakReference可达，就会把它放到ReferenceQueue中，等下次gc时回收它。
+* 例如 我们在一个服务中需要cache，cache同步于整个进程的生命周期,随着cache中包含的引用越来越多，gc是无法回收这些引用的，只能自行手动移除引用。这时可以引入软引用，让GC帮你回收。可以参考WeakHashMap,以及Guava框架关于Cache的实现。
 
 [TIP]
 系统为我们提供了WeakHashMap，和HashMap类似，只是其key使用了weak reference。如果WeakHashMap的某个key被垃圾回收器回收，那么entity也会自动被remove。
 
-* 由于WeakReference被GC回收的可能性较大，因此，在使用它之前，你需要通过weakObj.get()去判断目的对象引用是否已经被回收.
 
-* WeakReference.get()返回null，它指向的对象就会被垃圾回收，那么WeakReference对象就没有用了，意味着你应该进行一些清理。比如在WeakHashMap中要把回收过的key从Map中删除掉，避免无用的的weakReference不断增长。 ReferenceQueue可以让你很容易地跟踪dead references。WeakReference类的构造函数有一个ReferenceQueue参数，当指向的对象被垃圾回收时，会把WeakReference对象放到ReferenceQueue中。这样，遍历ReferenceQueue可以得到所有回收过的WeakReference。
+
+
+
+[WARNING]
+用一个普通的（强）引用拷贝一个对象引用时，限制 referent 的生命周期至少与被拷贝的引用的生命周期一样长。如果不小心，那么它可能就与程序的生命周期一样 —— 如果将一个对象放入一个全局集合中的话。另一方面，在创建对一个对象的弱引用时，完全没有扩展 referent 的生命周期，只是在对象仍然存活的时候，保持另一种到达它的方法。
+
+
 
 - 虚引用 Phantom reference
 
@@ -67,7 +80,6 @@
 * 也无法通过虚引用来取得一个对象实例
 * 为一个对象设置虚引用，唯一目的就是能在这个对象被回收时收到一个系统通知。
 
-* 它的get()方法总是返回null。这意味着你只能用PhantomReference本身，而得不到它指向的对象。当WeakReference指向的对象变得弱可达(weakly reachable）时会立即被放到ReferenceQueue中，这在finalization、garbage collection之前发生。理论上，你可以在finalize()方法中使对象“复活”（使一个强引用指向它就行了，gc不会回收它）。但没法复活PhantomReference指向的对象。而PhantomReference是在garbage collection之后被放到ReferenceQueue中的，没法复活。
 
 
 
