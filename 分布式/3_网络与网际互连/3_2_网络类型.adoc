@@ -1,3 +1,5 @@
+= Types of network
+
 == 网络类型
 
 局域网

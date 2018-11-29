@@ -1,0 +1,14 @@
+data/doc/blogging_with_asciidoc.txt.i
+data/conf/wordpress.zip.i
+data/blogpost.py.i
+data/asciidocapi.py.i
+data/blogpost_example.conf.i
+data/conf/wordpress-8.2.7.conf.i
+data/asciidoc_wordpress.conf.i
+data/conf/blogpost_example.conf.i
+data/.hgtags.i
+data/README.i
+data/.hgignore.i
+data/doc/blogpost.1.txt.i
+data/wordpresslib.py.i
+data/conf/wordpress.conf.i

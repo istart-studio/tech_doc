@@ -1,4 +1,6 @@
-== 选举算法（election algorithm）
+= Election algorithm
+
+== 选举算法
 
 选择一个唯一的进程来扮演特定的角色的算法成为选举算法。
 
