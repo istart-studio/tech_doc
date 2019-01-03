@@ -1,0 +1,196 @@
+[source,]
+----
+
+
+<link href="https://cdn.bootcss.com/twitter-bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
+
+<input type="file" id="attachment"/>
+<button onclick="startUpload()">start upload</button>
+<button onclick="setCancel()">cancel upload</button>
+
+<div class="progress">
+    <div id="uploadProgressBar" class="progress-bar progress-bar-striped active" role="progressbar"
+         aria-valuemin="0"
+         aria-valuemax="100" style="width: 0%">
+        <!--<span class="sr-only">45% Complete</span>-->
+    </div>
+    <span id="uploadProgressContent">0%</span>
+</div>
+
+<script src="https://cdn.bootcss.com/jquery/1.12.4/jquery.js"></script>
+<script>
+
+    var cancel = false;
+    var started = false;
+
+    function init() {
+        cancel = false;
+        started = true;
+        document.getElementById('uploadProgressBar').className = 'progress-bar progress-bar-striped active';
+        document.getElementById('uploadProgressBar').style.width = '0%';
+        document.getElementById('uploadProgressContent').innerHTML = "开始上传";
+    }
+
+    function startUpload() {
+        var files = document.getElementById('attachment').files;
+        if (!files.length) {
+            alert('请先选择要上传的文件!');
+            return;
+        }
+
+        var file = files[0];
+        if (started) {
+            alert('请先停止现有上传');
+            return;
+        }
+        // 状态控制，初始化 init
+        init();
+        // 服务期回传
+        var key = '';
+        var uploadId = '';
+
+        if (key === '' || uploadId === '') {
+
+            console.log("准备上传");
+            $.ajax({
+                url: "http://localhost:8001/version/upload/init?fileName=" + file.name,
+            }).success(function (fileKey) {
+                console.log("开始上传")
+                key = fileKey.key;
+                uploadId = fileKey.uploadId;
+                multipartUpload(file, key, uploadId);
+            }).error(function (msg) {
+                alert("error:" + msg);
+                console.error(msg);
+                setStopped();
+            });
+        }
+    }
+
+
+    function multipartUpload(file, key, uploadId) {
+        // 不要大于20G,每次3M
+        var fileSize = file.size;
+        var partSize = 2048000;
+        var partCount = Math.ceil(fileSize / partSize);
+        var successCount = 0;
+        var retryCount = 0;
+        var partNo = 1;
+        if (partCount > 10000) {
+            alert('文件太大,不要大于20G');
+            return;
+        }
+        var start = 0;
+        uploadTask(key, uploadId, partNo, start, file, partSize, partCount, successCount, retryCount);
+
+    }
+
+    function uploadTask(key, uploadId, partNo, start, file, partSize, partCount, successCount, retryCount) {
+        if (partNo > partCount || cancel) {
+            return;
+        }
+        console.log("上传中")
+        var stop = start + partSize + 1 > file.size ? file.size : start + partSize + 1;
+        var curPartSize = stop - start;
+        var blob = file.slice(start, stop);
+        var form = new FormData();
+        console.log("start:" + start + "end:" + stop);
+        form.append('attachment', blob);
+        $.ajax({
+            url: "http://localhost:8001/version/upload?key=" + key + "&uploadId=" + uploadId + "&partSize=" + curPartSize + "&partNumber=" + partNo,
+            data: form,
+            method: 'POST',
+            processData: false,
+            contentType: false,
+            // async: false
+        }).success(function (result) {
+            if (result.reCode === 999) {
+                // todo:可以变为重试
+                console.error(result.msg);
+                if (retryCount <= 3) {
+                    uploadTask(key, uploadId, partNo, start, file, partSize, partCount, successCount, ++retryCount);
+                } else {
+                    stopFn(key, uploadId);
+                }
+            } else {
+                console.log("部分上传成功")
+                start = stop;
+                successCount += 1;
+                retryCount = 0;
+                var progressValue = parseInt(successCount * 100 / partCount);
+                document.getElementById('uploadProgressBar').style.width = progressValue + '%';
+                document.getElementById('uploadProgressContent').innerHTML = progressValue + '%';
+                if (!cancel && successCount === partCount) {
+                    complete(key, uploadId, successCount, partCount);
+                } else if (!cancel) {
+                    uploadTask(key, uploadId, ++partNo, start, file, partSize, partCount, successCount, retryCount);
+                } else {
+                    cancelFn(key, uploadId);
+                }
+            }
+        }).error(function (result) {
+            alert("error:" + result);
+            console.error(result);
+            stopFn(key, uploadId);
+        });
+    }
+
+    function complete(key, uploadId, successCount, partCount) {
+        console.log(successCount)
+        if (!cancel && successCount === partCount) {
+            $.ajax({
+                url: "http://localhost:8001/version/upload/complete?key=" + key + "&uploadId=" + uploadId,
+            }).success(function (result) {
+                if (result.reCode === 999) {
+                    console.log("上传失败")
+                    document.getElementById('uploadProgressBar').className = 'progress-bar progress-bar-success progress-bar-danger';
+                    document.getElementById('uploadProgressContent').innerHTML = "上传失败";
+                } else {
+                    console.log("上传成功")
+                    document.getElementById('uploadProgressBar').className = 'progress-bar progress-bar-success progress-bar-success';
+                    document.getElementById('uploadProgressContent').innerHTML = "上传成功";
+                }
+                setStopped();
+            }).error(function (msg) {
+                alert("error:" + msg);
+                console.error(msg);
+                setStopped();
+            });
+        }
+    }
+
+
+    function setCancel() {
+        cancel = true;
+    }
+
+    function cancelFn(key, uploadId) {
+        console.log('取消中');
+        $.ajax({
+            url: "http://localhost:8001/version/upload/abort?key=" + key + "&uploadId=" + uploadId,
+            method: 'GET',
+        }).success(function (result) {
+            console.log('已取消')
+            document.getElementById('uploadProgressBar').className = 'progress-bar progress-bar-success progress-bar-warning';
+            document.getElementById('uploadProgressContent').innerHTML = "上传已取消";
+            setStopped();
+        }).error(function (result) {
+            console.log("取消失败")
+            document.getElementById('uploadProgressBar').className = 'progress-bar progress-bar-success progress-bar-danger';
+            document.getElementById('uploadProgressContent').innerHTML = "取消失败";
+            setStopped();
+        })
+
+    }
+
+    function setStopped() {
+        started = false;
+    }
+
+    function stopFn(key, uploadId) {
+        setCancel();
+        cancelFn(key, uploadId);
+        setStopped();
+    }
+</script>
+----
