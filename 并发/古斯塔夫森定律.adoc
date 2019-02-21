@@ -1,0 +1,27 @@
+= Gustafson's law
+
+https://en.wikipedia.org/wiki/Gustafson%27s_law
+
+== 概要
+
+执行时间 ：a + b 
+
+a：串行时间 
+
+b：并行时间
+
+总执行时间 a+nb 
+
+n：处理器个数
+
+加速比 ：(a+nb)/(a+b)
+
+串行比例： F = a/(a+b)
+
+a:不可并行模块
+
+b:可并行模块
+
+加速比：n-F(n-1)
+
+只要有足够的并行化，那么加速比和CPU个数成正比
